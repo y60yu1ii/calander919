@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8" />
+    <title>空間借用申請｜日曆</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <style>
+        :root {
+            --bg: #0b0c0f;
+            --fg: #e7e7ea;
+            --muted: #9aa0a6;
+            --acc: #4f46e5;
+            --ok: #16a34a;
+            --err: #dc2626;
+            --bd: #2a2d36;
+        }
+
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg: #f8fafc;
+                --fg: #0b0c0f;
+                --muted: #475569;
+                --bd: #e5e7eb;
+            }
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--fg);
+            font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        }
+
+        .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px
+        }
+
+        .sub {
+            color: var(--muted);
+            font-size: 14px;
+            margin-bottom: 24px
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 24px
+        }
+
+        /* 1:2 */
+        @media (max-width:900px) {
+            .grid {
+                grid-template-columns: 1fr
+            }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid var(--bd);
+            border-radius: 14px;
+            padding: 18px
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin: 10px 0 6px
+        }
+
+        .row {
+            display: flex;
+            gap: 12px
+        }
+
+        .row>* {
+            flex: 1
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--bd);
+            border-radius: 10px;
+            background: transparent;
+            color: var(--fg);
+            outline: none;
+            font: inherit
+        }
+
+        textarea {
+            min-height: 88px;
+            resize: vertical
+        }
+
+        .btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px
+        }
+
+        button {
+            appearance: none;
+            border: 1px solid var(--bd);
+            background: var(--acc);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--fg)
+        }
+
+        button:disabled {
+            opacity: .7;
+            cursor: not-allowed
+        }
+
+        .msg {
+            margin-top: 10px;
+            font-size: 14px
+        }
+
+        .ok {
+            color: var(--ok)
+        }
+
+        .err {
+            color: var(--err)
+        }
+
+        iframe {
+            width: 100%;
+            min-height: 80vh;
+            border: 1px solid var(--bd);
+            border-radius: 14px;
+            background: #fff
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(79, 70, 229, .12);
+            color: var(--acc);
+            font-size: 12px;
+            margin-left: 8px
+        }
+    </style>
+
+    <script>
+        // 你的 Apps Script Web App（script.google.com 這個會 302）
+        const GAS_EXEC = "https://script.google.com/macros/s/AKfycbzn6qkBpvRlr8TfGxS_typy0_Uee1Aji1pX09__1knD1-8gIyO5kyar2wn0VX9iyEYyag/exec";
+        // 公開嵌入的 Google Calendar（你現在仍採用 iframe）
+        const CALENDAR_EMBED_SRC = "https://calendar.google.com/calendar/embed?src=mrbvtan5n92eo5icii8l7cns8c%40group.calendar.google.com&ctz=Asia%2FTaipei";
+        const FIXED_LOCATION = "北平二街";
+
+        // 解析後的「實際執行端」URL（可能是 .../macros/echo?user_content_key=...&lib=...）
+        let RESOLVED_WEBAPP_URL = "";
+
+        const tz = "Asia/Taipei";
+        function todayStr() {
+            const d = new Date(); const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${dd}`;
+        }
+        function $(sel) { return document.querySelector(sel); }
+
+        // 重要：完整保留 redirect 後的 URL（含 query）
+        async function resolveWebAppUrl() {
+            // 用 GET 觸發 302，瀏覽器 follow 後 res.url 就是最終 googleusercontent 端點（含 user_content_key 等）
+            const res = await fetch(GAS_EXEC + "?action=alive&_=" + Date.now(), { method: "GET", redirect: "follow" });
+            RESOLVED_WEBAPP_URL = res.url; // ★ 保留完整網址（不要砍掉 query）
+            // console.log("resolved:", RESOLVED_WEBAPP_URL);
+        }
+
+        // 用 text/plain 避開 preflight；打到「已解析」的 URL
+        async function postJSON(url, data) {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" }, // simple request
+                body: JSON.stringify(data),
+                redirect: "follow",
+                mode: "cors"
+            });
+            const txt = await res.text();
+            try { return JSON.parse(txt); } catch { return { ok: false, error: "非 JSON 回應", raw: txt }; }
+        }
+
+        function refreshCalendar() {
+            const iframe = $("#cal");
+            const url = new URL(iframe.src);
+            url.searchParams.set("_", Date.now().toString());
+            iframe.src = url.toString();
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            // 預設值
+            $("#date").value = todayStr();
+            $("#start").value = "19:00";
+            $("#end").value = "22:00";
+            $("#location").textContent = FIXED_LOCATION;
+
+            // 先解析 web app 實際端點
+            try { await resolveWebAppUrl(); } catch (e) { console.error("解析 WebApp URL 失敗", e); }
+
+            // 送出申請
+            $("#apply").addEventListener("click", async () => {
+                $(".msg").textContent = "";
+
+                if (!RESOLVED_WEBAPP_URL) { showErr("無法連線服務端"); return; }
+
+                const payload = {
+                    title: $("#title").value.trim(),
+                    date: $("#date").value,
+                    startTime: $("#start").value,
+                    endTime: $("#end").value,
+                    location: FIXED_LOCATION,
+                    description: $("#desc").value.trim(),
+                    applicantEmail: $("#email").value.trim(),
+                    tz,
+                };
+
+                if (!payload.title) return showErr("請輸入標題");
+                if (!payload.date || !payload.startTime || !payload.endTime) return showErr("請選擇日期與時間");
+                if (!payload.applicantEmail) return showErr("請輸入 Email");
+
+                lock(true);
+
+                // ★ 這裡關鍵：在「保留完整 query」的已解析 URL 上，正確地再串上 action 參數
+                const sep = RESOLVED_WEBAPP_URL.includes("?") ? "&" : "?";
+                const url = `${RESOLVED_WEBAPP_URL}${sep}action=create`;
+
+                let res;
+                try {
+                    res = await postJSON(url, payload);
+                } catch (err) {
+                    // 若 service token 失效，重解一次 URL 再試一次
+                    try {
+                        await resolveWebAppUrl();
+                        const sep2 = RESOLVED_WEBAPP_URL.includes("?") ? "&" : "?";
+                        res = await postJSON(`${RESOLVED_WEBAPP_URL}${sep2}action=create`, payload);
+                    } catch (e2) {
+                        lock(false);
+                        showErr("連線失敗，請稍後再試");
+                        console.error(e2);
+                        return;
+                    }
+                }
+
+                lock(false);
+
+                if (res.ok) {
+                    showOk("已送出申請！系統已將事件標記為「申請中」，審核後會寄信通知。");
+                    refreshCalendar();
+                    $("#title").value = ""; $("#desc").value = "";
+                } else {
+                    showErr(res.error || "送出失敗");
+                    console.error(res);
+                }
+            });
+
+            // 重設
+            $("#reset").addEventListener("click", () => {
+                $("#title").value = ""; $("#desc").value = ""; $("#email").value = "";
+                $("#date").value = todayStr(); $("#start").value = "19:00"; $("#end").value = "22:00";
+                $(".msg").textContent = "";
+            });
+
+            // 載入日曆
+            const cal = document.getElementById("cal");
+            cal.src = CALENDAR_EMBED_SRC;
+        });
+
+        function lock(disabled) { $("#apply").disabled = disabled; $("#reset").disabled = disabled; }
+        function showOk(t) { const n = $(".msg"); n.className = "msg ok"; n.textContent = t; }
+        function showErr(t) { const n = $(".msg"); n.className = "msg err"; n.textContent = t; }
+    </script>
+</head>
+
+<body>
+    <div class="wrap">
+        <div class="title">空間借用申請 <span class="badge">Asia/Taipei</span></div>
+        <div class="sub">填寫申請資訊 → 送出後日曆會出現一筆「(申請中) …」事件；審核通過會自動移除前綴並寄信通知。</div>
+
+        <div class="grid">
+            <!-- 左：表單 -->
+            <div class="card">
+                <label for="title">標題</label>
+                <input id="title" placeholder="格式：[單位] 活動名稱" />
+
+                <div class="row">
+                    <div>
+                        <label for="date">日期</label>
+                        <input id="date" type="date" />
+                    </div>
+                    <div>
+                        <label for="start">開始時間</label>
+                        <input id="start" type="time" />
+                    </div>
+                    <div>
+                        <label for="end">結束時間</label>
+                        <input id="end" type="time" />
+                    </div>
+                </div>
+
+                <label>地點</label>
+                <div id="location"
+                    style="padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:rgba(255,255,255,.06)">
+                    北平二街
+                </div>
+
+                <label for="email">申請人 Email</label>
+                <input id="email" type="email" placeholder="name@example.com" />
+
+                <label for="desc">備註</label>
+                <textarea id="desc" placeholder="用途、預計人數、設備需求…"></textarea>
+
+                <div class="btns">
+                    <button id="apply">送出申請</button>
+                    <button id="reset" class="secondary" type="button">清除</button>
+                </div>
+                <div class="msg" aria-live="polite"></div>
+            </div>
+
+            <!-- 右：日曆 -->
+            <div class="card">
+                <iframe id="cal" title="Google Calendar" src="" loading="lazy"></iframe>
+            </div>
+        </div>
+
+        <div class="sub" style="margin-top:16px">
+            小提示：若日曆未即時顯示新事件，稍等數秒或重新整理頁面。
+        </div>
+    </div>
+</body>
+
+</html>
