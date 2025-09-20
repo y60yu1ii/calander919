@@ -5,66 +5,107 @@
   <title>空間借用申請｜日曆</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <!-- inline favicon（避免 /favicon.ico 404） -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%234f46e5'/%3E%3Cpath d='M18 22h28v6H18zm0 12h20v6H18z' fill='white'/%3E%3C/svg%3E" />
 
   <style>
     :root { --bg:#0b0c0f; --fg:#e7e7ea; --muted:#9aa0a6; --acc:#4f46e5; --ok:#16a34a; --err:#dc2626; --bd:#2a2d36; }
     @media (prefers-color-scheme: light){ :root { --bg:#f8fafc; --fg:#0b0c0f; --muted:#475569; --bd:#e5e7eb; } }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";}
-    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    html, body { height: 100%; }
+    body{
+      margin:0;background:var(--bg);color:var(--fg);
+      font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";
+    }
+    .wrap{max-width:1400px;margin:0 auto;padding:24px;height:100%}
     .title{font-size:22px;font-weight:700;margin-bottom:8px}
-    .sub{color:var(--muted);font-size:14px;margin-bottom:24px}
-    .grid{display:grid;grid-template-columns:1fr 2fr;gap:24px}
-    @media (max-width:900px){ .grid{grid-template-columns:1fr} }
-    .card{background:rgba(255,255,255,.04);border:1px solid var(--bd);border-radius:14px;padding:18px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:16px}
+
+    /* 關鍵：20% / 80%，並讓網格撐滿視窗高度 */
+    .grid{
+      display:grid;
+      grid-template-columns: 20% 80%;
+      gap:24px;
+      height: calc(100dvh - 120px); /* 視窗高扣掉上方標題區域 */
+      min-height: 520px;
+    }
+    @media (max-width: 900px){
+      .grid{ grid-template-columns: 1fr; height:auto; }
+    }
+
+    .card{
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--bd);
+      border-radius:14px;
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      min-height:0; /* 讓子層可正確縮放 */
+    }
+
     label{display:block;font-weight:600;margin:10px 0 6px}
-    .row{display:flex;gap:12px}.row>*{flex:1}
-    input,textarea{width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--fg);outline:none;font:inherit}
+    .row{display:flex;gap:12px}
+    .row>*{flex:1}
+
+    input,textarea{
+      width:100%;padding:10px 12px;border:1px solid var(--bd);
+      border-radius:10px;background:transparent;color:var(--fg);outline:none;font:inherit
+    }
     textarea{min-height:88px;resize:vertical}
+
     .btns{display:flex;gap:10px;margin-top:14px}
     button{appearance:none;border:1px solid var(--bd);background:var(--acc);color:white;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer}
     button.secondary{background:transparent;color:var(--fg)}
     button:disabled{opacity:.7;cursor:not-allowed}
+
     .msg{margin-top:10px;font-size:14px}
     .ok{color:var(--ok)} .err{color:var(--err)}
-    iframe{width:100%;min-height:80vh;border:1px solid var(--bd);border-radius:14px;background:#fff}
+
+    /* 右側卡片讓 iframe 填滿 */
+    .calendar-card{ padding:0; }
+    .calendar-card > .header {
+      padding:14px 18px; border-bottom:1px solid var(--bd);
+      font-weight:600; color:var(--muted);
+    }
+    .calendar-card .body {
+      flex:1; min-height:0; display:flex; flex-direction:column; padding:18px;
+    }
+    iframe{
+      flex:1; width:100%;
+      border:1px solid var(--bd);
+      border-radius:14px;
+      background:#fff;
+      min-height:0; /* 配合 flex:1 正確填滿 */
+    }
+
     .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(79,70,229,.12);color:var(--acc);font-size:12px;margin-left:8px}
     .readonly{padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:rgba(255,255,255,.06)}
+    .field { margin-top: 10px; }           /* 讓每個時間欄位和上方有點距離 */
+input[type="time"], input[type="date"] {
+  min-width: 0;                        /* 防止在窄側欄時超出容器 */
+}
   </style>
 
   <script>
     // === 參數 ===
-    const GAS_EXEC = "https://script.google.com/macros/s/AKfycbzn6qkBpvRlr8TfGxS_typy0_Uee1Aji1pX09__1knD1-8gIyO5kyar2wn0VX9iyEYyag/exec"; // 你的 Web App (支援 JSONP)
+    const GAS_EXEC = "https://script.google.com/macros/s/AKfycbzn6qkBpvRlr8TfGxS_typy0_Uee1Aji1pX09__1knD1-8gIyO5kyar2wn0VX9iyEYyag/exec"; // doGet 支援 JSONP
     const CALENDAR_ID = "mrbvtan5n92eo5icii8l7cns8c@group.calendar.google.com";
     const CALENDAR_EMBED_SRC = "https://calendar.google.com/calendar/embed?src=mrbvtan5n92eo5icii8l7cns8c%40group.calendar.google.com&ctz=Asia%2FTaipei";
     const FIXED_LOCATION = "北平二街";
     const TZ = "Asia/Taipei";
 
-    // === 小工具 ===
     const $ = sel => document.querySelector(sel);
     const todayStr = () => {
       const d = new Date();
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     };
-    function setLocked(disabled){
-      $("#apply").disabled = disabled;
-      $("#reset").disabled = disabled;
-    }
-    function showMsg(text, ok=true){
-      const n = $(".msg");
-      n.className = `msg ${ok ? "ok" : "err"}`;
-      n.textContent = text;
-    }
+    function setLocked(disabled){ $("#apply").disabled = disabled; $("#reset").disabled = disabled; }
+    function showMsg(text, ok=true){ const n=$(".msg"); n.className=`msg ${ok?"ok":"err"}`; n.textContent=text; }
     function refreshCalendar(){
-      const el = $("#cal");
-      const u = new URL(el.src);
-      u.searchParams.set("_", Date.now().toString());
-      el.src = u.toString();
+      const el = $("#cal"); const u = new URL(el.src);
+      u.searchParams.set("_", Date.now().toString()); el.src = u.toString();
     }
 
-    // === JSONP：用 <script> 避免 CORS ===
+    // JSONP：用 <script> 避免 CORS
     function jsonp(url, params = {}, timeoutMs = 12000){
       return new Promise((resolve, reject) => {
         const cbName = `__jsonp_cb_${Date.now()}_${Math.floor(Math.random()*1e6)}`;
@@ -76,18 +117,14 @@
         window[cbName] = (data) => { cleanup(); resolve(data); };
         const q = new URLSearchParams({ ...params, callback: cbName });
         const src = url + (url.includes("?") ? "&" : "?") + q.toString();
-
         const script = document.createElement("script");
-        script.src = src;
-        script.async = true;
+        script.src = src; script.async = true;
         script.onerror = () => { cleanup(); reject(new Error("JSONP 載入失敗")); };
-
         const timer = setTimeout(() => { cleanup(); reject(new Error("JSONP 逾時")); }, timeoutMs);
         document.head.appendChild(script);
       });
     }
 
-    // === 事件 ===
     document.addEventListener("DOMContentLoaded", () => {
       // 預設值
       $("#date").value = todayStr();
@@ -101,7 +138,6 @@
       // 送出申請（doGet + JSONP）
       $("#apply").addEventListener("click", async () => {
         $(".msg").textContent = "";
-
         const title = $("#title").value.trim();
         const date = $("#date").value;
         const startTime = $("#start").value;
@@ -118,21 +154,13 @@
           const res = await jsonp(GAS_EXEC, {
             action: "create",
             calendarId: CALENDAR_ID,
-            title,
-            date,
-            startTime,
-            endTime,
-            location: FIXED_LOCATION,
-            description,
-            applicantEmail,
-            tz: TZ
+            title, date, startTime, endTime,
+            location: FIXED_LOCATION, description, applicantEmail, tz: TZ
           });
-
           if (res && res.ok) {
-            showMsg("已送出申請！系統已標記為「申請中」，審核後會寄信通知。", true);
+            showMsg("已送出申請！系統已標記為「申請中」，審核後會寄信通知。");
             refreshCalendar();
-            $("#title").value = "";
-            $("#desc").value  = "";
+            $("#title").value = ""; $("#desc").value = "";
           } else {
             showMsg((res && res.error) || "送出失敗", false);
             console.error("create error:", res);
@@ -152,7 +180,7 @@
         $("#email").value = "";
         $("#date").value  = todayStr();
         $("#start").value = "19:00";
-        "#end".value      = "22:00";
+        document.getElementById("end").value = "22:00";
         $(".msg").textContent = "";
       });
     });
@@ -165,25 +193,24 @@
     <div class="sub">填寫申請資訊 → 送出後日曆會出現一筆「(申請中) …」事件；審核通過會自動移除前綴並寄信通知。</div>
 
     <div class="grid">
-      <!-- 左：申請表單 -->
+      <!-- 左：申請表單（20%） -->
       <div class="card">
         <label for="title">標題</label>
         <input id="title" placeholder="格式：[單位] 活動名稱" />
 
-        <div class="row">
-          <div>
-            <label for="date">日期</label>
-            <input id="date" type="date" />
-          </div>
-          <div>
-            <label for="start">開始時間</label>
-            <input id="start" type="time" />
-          </div>
-          <div>
-            <label for="end">結束時間</label>
-            <input id="end" type="time" />
-          </div>
-        </div>
+<label for="date">日期</label>
+<input id="date" type="date" />
+
+<div class="field">
+  <label for="start">開始時間</label>
+  <input id="start" type="time" />
+</div>
+
+<div class="field">
+  <label for="end">結束時間</label>
+  <input id="end" type="time" />
+</div>
+
 
         <label>地點</label>
         <div id="location" class="readonly">北平二街</div>
@@ -201,9 +228,11 @@
         <div class="msg" aria-live="polite"></div>
       </div>
 
-      <!-- 右：日曆 -->
-      <div class="card">
-        <iframe id="cal" title="Google Calendar" src="" loading="lazy"></iframe>
+      <!-- 右：日曆（80%） -->
+      <div class="card calendar-card">
+        <div class="body">
+          <iframe id="cal" title="Google Calendar" src="" loading="lazy"></iframe>
+        </div>
       </div>
     </div>
 
