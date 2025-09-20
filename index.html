@@ -18,7 +18,6 @@
     }
     .wrap{max-width:1400px;margin:0 auto;padding:24px;height:100%}
     .title{font-size:22px;font-weight:700;margin-bottom:8px}
-    .sub{color:var(--muted);font-size:14px;margin-bottom:16px}
 
     /* 關鍵：20% / 80%，並讓網格撐滿視窗高度 */
     .grid{
@@ -79,10 +78,25 @@
 
     .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(79,70,229,.12);color:var(--acc);font-size:12px;margin-left:8px}
     .readonly{padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:rgba(255,255,255,.06)}
-    .field { margin-top: 10px; }           /* 讓每個時間欄位和上方有點距離 */
-input[type="time"], input[type="date"] {
-  min-width: 0;                        /* 防止在窄側欄時超出容器 */
-}
+    .field { margin-top: 10px; }
+    input[type="time"], input[type="date"] { min-width: 0; }
+
+    /* === Spinner 遮罩 === */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.35);
+      display: none; align-items: center; justify-content: center;
+      z-index: 9999; backdrop-filter: blur(2px);
+    }
+    .overlay.show { display: flex; }
+    .spinner {
+      width: 56px; height: 56px; border-radius: 50%;
+      border: 6px solid rgba(255,255,255,.25);
+      border-top-color: var(--acc);
+      animation: spin 1s linear infinite;
+    }
+    .overlay-text { margin-top: 12px; color: #fff; font-weight: 600; text-align:center; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 
   <script>
@@ -98,11 +112,23 @@ input[type="time"], input[type="date"] {
       const d = new Date();
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     };
-    function setLocked(disabled){ $("#apply").disabled = disabled; $("#reset").disabled = disabled; }
+
+    // 控制按鈕鎖定 & spinner
+    let _locked = false;
+    function setLocked(disabled){
+      _locked = !!disabled;
+      updateApplyEnabled();
+      $("#reset").disabled = _locked;
+    }
     function showMsg(text, ok=true){ const n=$(".msg"); n.className=`msg ${ok?"ok":"err"}`; n.textContent=text; }
     function refreshCalendar(){
       const el = $("#cal"); const u = new URL(el.src);
       u.searchParams.set("_", Date.now().toString()); el.src = u.toString();
+    }
+    function showSpinner(show){
+      const ov = $("#overlay");
+      if (show){ ov.classList.add("show"); document.body.setAttribute("aria-busy","true"); }
+      else { ov.classList.remove("show"); document.body.removeAttribute("aria-busy"); }
     }
 
     // JSONP：用 <script> 避免 CORS
@@ -125,6 +151,16 @@ input[type="time"], input[type="date"] {
       });
     }
 
+    // 根據 email 是否有效來啟用/停用送出按鈕
+    function isEmailValid(){
+      const el = $("#email");
+      const ok = el.value.trim().length > 0 && el.checkValidity();
+      return ok;
+    }
+    function updateApplyEnabled(){
+      $("#apply").disabled = _locked || !isEmailValid();
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
       // 預設值
       $("#date").value = todayStr();
@@ -135,9 +171,15 @@ input[type="time"], input[type="date"] {
       // 載入日曆
       $("#cal").src = CALENDAR_EMBED_SRC;
 
+      // email 輸入變更時即時控制按鈕狀態
+      $("#email").addEventListener("input", updateApplyEnabled);
+      // 初始狀態：未填 email 時不可送出
+      updateApplyEnabled();
+
       // 送出申請（doGet + JSONP）
       $("#apply").addEventListener("click", async () => {
         $(".msg").textContent = "";
+
         const title = $("#title").value.trim();
         const date = $("#date").value;
         const startTime = $("#start").value;
@@ -147,9 +189,10 @@ input[type="time"], input[type="date"] {
 
         if (!title) return showMsg("請輸入標題", false);
         if (!date || !startTime || !endTime) return showMsg("請選擇日期與時間", false);
-        if (!applicantEmail) return showMsg("請輸入 Email", false);
+        if (!isEmailValid()) return showMsg("請輸入有效的 Email", false);
 
         setLocked(true);
+        showSpinner(true);
         try {
           const res = await jsonp(GAS_EXEC, {
             action: "create",
@@ -169,7 +212,8 @@ input[type="time"], input[type="date"] {
           showMsg("連線失敗，請稍後再試", false);
           console.error(err);
         } finally {
-          setLocked(false);
+          showSpinner(false);
+          setLocked(false); // 會自動依 email 有效性啟用/停用送出按鈕
         }
       });
 
@@ -182,6 +226,7 @@ input[type="time"], input[type="date"] {
         $("#start").value = "19:00";
         document.getElementById("end").value = "22:00";
         $(".msg").textContent = "";
+        updateApplyEnabled(); // 清空 email 後再次停用送出
       });
     });
   </script>
@@ -189,40 +234,39 @@ input[type="time"], input[type="date"] {
 
 <body>
   <div class="wrap">
-    <div class="title">空間借用申請 <span class="badge">Asia/Taipei</span></div>
+    <div class="title">微行星聲樂藝術空間借用申請 </div>
     <div class="sub">填寫申請資訊 → 送出後日曆會出現一筆「(申請中) …」事件；審核通過會自動移除前綴並寄信通知。</div>
 
     <div class="grid">
       <!-- 左：申請表單（20%） -->
       <div class="card">
         <label for="title">標題</label>
-        <input id="title" placeholder="格式：[單位] 活動名稱" />
+        <input id="title" placeholder="格式：單位-活動名稱" />
 
-<label for="date">日期</label>
-<input id="date" type="date" />
+        <label for="date">日期</label>
+        <input id="date" type="date" />
 
-<div class="field">
-  <label for="start">開始時間</label>
-  <input id="start" type="time" />
-</div>
+        <div class="field">
+          <label for="start">開始時間</label>
+          <input id="start" type="time" />
+        </div>
 
-<div class="field">
-  <label for="end">結束時間</label>
-  <input id="end" type="time" />
-</div>
-
+        <div class="field">
+          <label for="end">結束時間</label>
+          <input id="end" type="time" />
+        </div>
 
         <label>地點</label>
         <div id="location" class="readonly">北平二街</div>
 
-        <label for="email">申請人 Email</label>
-        <input id="email" type="email" placeholder="name@example.com" />
+        <label for="email">申請人 Email (必填)</label>
+        <input id="email" type="email" placeholder="name@example.com" required />
 
         <label for="desc">備註</label>
-        <textarea id="desc" placeholder="用途、預計人數、設備需求…"></textarea>
+        <textarea id="desc" placeholder="捐款收據抬頭、統編、預計人數、設備需求"></textarea>
 
         <div class="btns">
-          <button id="apply">送出申請</button>
+          <button id="apply" disabled>送出申請</button>
           <button id="reset" class="secondary" type="button">清除</button>
         </div>
         <div class="msg" aria-live="polite"></div>
@@ -235,9 +279,13 @@ input[type="time"], input[type="date"] {
         </div>
       </div>
     </div>
+  </div>
 
-    <div class="sub" style="margin-top:16px">
-      小提示：若日曆未即時顯示新事件，稍等數秒或重新整理頁面。
+  <!-- Spinner 遮罩 -->
+  <div id="overlay" class="overlay" role="status" aria-live="polite" aria-label="處理中">
+    <div>
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="overlay-text">處理中…</div>
     </div>
   </div>
 </body>
